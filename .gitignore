@@ -122,3 +122,44 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# IntelliJ IDEA files
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# IntelliJ-specific project files
+# Ignore workspace configuration files
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/dictionaries/
+.idea/libraries/
+
+# Ignore idea-based output directories
+out/
+
+# Ignore JetBrains sensitive or machine-specific files
+.idea/modules.xml
+.idea/assetWizardSettings.xml
+.idea/compiler.xml
+.idea/copyright/profiles_settings.xml
+.idea/jsLibraryMappings.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/scopes/
+.idea/vcs.xml
+
+# Ignore run/debug configurations
+.idea/runConfigurations/
+
+# Ignore IntelliJ project management files
+.idea/markdown_navigator.xml
+.idea/kotlin_code_style.xml
+.idea/codeStyles/
+.idea/inspectionProfiles/
+
+# Ignore specific plugin files
+.idea/python.xml
+.idea/php.xml
