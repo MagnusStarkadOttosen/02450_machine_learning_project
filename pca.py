@@ -7,38 +7,41 @@ from sklearn.decomposition import PCA
 from scipy.linalg import svd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+import seaborn as sns
 
 # Load the data
-X = ld.load_data()
+X, y = ld.load_data()
 
 X = es.encode_sex(X)
 
-# Select the features you want for PCA (excluding 'Sex' if it's one-hot encoded)
-X_features = X.drop(columns=['Sex'])  # Adjust if necessary based on your encoding
 
-# Standardize the data (PCA assumes data is centered and scaled)
+features = ['Length', 'Diameter', 'Height', 'Whole_weight', 'Shucked_weight', 'Viscera_weight', 'Shell_weight']
+X_selected = X[features]
+
+
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_features)
+X_scaled = scaler.fit_transform(X_selected)
 
-# Initialize PCA
-pca = PCA(n_components=2)  # Change 'n_components' to the number of components you want
+
+pca = PCA(n_components=2)
 X_pca = pca.fit_transform(X_scaled)
 
-# View explained variance ratio for each component
 explained_variance = pca.explained_variance_ratio_
-print("Explained variance by each component:", explained_variance)
+print(f'Explained Variance Ratio: {explained_variance}')
 
-# Assuming X_pca contains the transformed data with two components
 plt.figure(figsize=(8,6))
-
-# Plot the two principal components
-plt.scatter(X_pca[:, 0], X_pca[:, 1], c=X['Sex'], cmap='viridis')  # 'c' represents the color based on the encoded 'Sex'
-
-# Add labels and title
+sns.scatterplot(x=X_pca[:, 0], y=X_pca[:, 1], hue=X['Sex'], palette='Set1')
+plt.title('PCA of Selected Features')
 plt.xlabel('Principal Component 1')
 plt.ylabel('Principal Component 2')
-plt.title('PCA: First Two Principal Components')
+plt.show()
 
-# Show the plot
-plt.colorbar(label='Sex encoding')  # Add color bar to see what the colors represent
+age = y.to_numpy() + 1.5
+
+plt.figure(figsize=(8,6))
+scatter = plt.scatter(X_pca[:, 0], X_pca[:, 1], c=age, cmap='viridis', alpha=0.8)
+plt.colorbar(scatter, label='Age (Years)')
+plt.title('PCA of Selected Features Colored by Age')
+plt.xlabel('Principal Component 1')
+plt.ylabel('Principal Component 2')
 plt.show()

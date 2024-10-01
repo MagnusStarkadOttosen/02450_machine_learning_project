@@ -9,4 +9,4 @@ def load_data():
     X = abalone.data.features 
     y = abalone.data.targets 
 
-    return X
+    return X, y
