@@ -13,3 +13,5 @@ for column in X.columns:
     plt.ylabel('Frequency')
     plt.grid(True)
     plt.show()
+
+
