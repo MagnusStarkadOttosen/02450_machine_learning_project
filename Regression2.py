@@ -1,7 +1,12 @@
+import pandas as pd
 from sklearn.linear_model import Ridge, Lasso
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold, cross_val_score
+from sklearn.base import BaseEstimator, RegressorMixin
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 def regularized_regression(X_train, y_train, model_type='ridge', lambdas=None, cv=10):
     """
@@ -321,3 +326,128 @@ def cross_validation_model_selection2(X, y, model_type='ridge', lambdas=None, K=
     print(f"Minimum Generalization Error: {min(generalization_errors)}")
     
     return lambdas, training_errors, generalization_errors
+
+
+
+
+
+# Baseline Model Class
+class BaselineModel:
+    def fit(self, X, y):
+        self.mean_y = np.mean(y)
+        return self
+    
+    def predict(self, X):
+        return np.full(X.shape[0], self.mean_y)
+
+# ANN Model in PyTorch
+class ANNModel(nn.Module):
+    def __init__(self, input_dim, hidden_units):
+        super(ANNModel, self).__init__()
+        self.hidden = nn.Linear(input_dim, hidden_units)
+        self.output = nn.Linear(hidden_units, 1)
+
+    def forward(self, x):
+        x = torch.relu(self.hidden(x))
+        x = self.output(x)
+        return x
+
+# Train and evaluate the ANN model
+def train_ann(X_train, y_train, X_val, y_val, hidden_units, epochs=100, learning_rate=0.01):
+    input_dim = X_train.shape[1]
+    model = ANNModel(input_dim, hidden_units)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Convert to PyTorch tensors
+    X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
+    X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+    y_val_tensor = torch.tensor(y_val, dtype=torch.float32).view(-1, 1)
+
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        y_pred = model(X_train_tensor)
+        loss = criterion(y_pred, y_train_tensor)
+        loss.backward()
+        optimizer.step()
+
+    # Evaluate on validation set
+    model.eval()
+    with torch.no_grad():
+        y_val_pred = model(X_val_tensor).numpy().flatten()
+    return mean_squared_error(y_val, y_val_pred), model
+
+# Two-Level Cross-Validation
+def two_level_cross_validation(X, y, lambdas, hidden_units_list, K1=10, K2=10):
+    outer_kf = KFold(n_splits=K1, shuffle=True, random_state=42)
+    outer_results = {'Baseline': [], 'Ridge': [], 'ANN': []}
+
+    for train_index, test_index in outer_kf.split(X):
+        X_train_outer, X_test_outer = X[train_index], X[test_index]
+        y_train_outer, y_test_outer = y[train_index], y[test_index]
+
+        # Inner Cross-Validation for Ridge
+        inner_kf = KFold(n_splits=K2, shuffle=True, random_state=42)
+        best_ridge_lambda = None
+        best_ridge_mse = float('inf')
+
+        for lam in lambdas:
+            ridge_mse = 0
+            for inner_train_index, inner_val_index in inner_kf.split(X_train_outer):
+                X_train_inner, X_val_inner = X_train_outer[inner_train_index], X_train_outer[inner_val_index]
+                y_train_inner, y_val_inner = y_train_outer[inner_train_index], y_train_outer[inner_val_index]
+                
+                ridge_model = Ridge(alpha=lam)
+                ridge_model.fit(X_train_inner, y_train_inner)
+                y_val_pred = ridge_model.predict(X_val_inner)
+                ridge_mse += mean_squared_error(y_val_inner, y_val_pred)
+            
+            ridge_mse /= K2
+            if ridge_mse < best_ridge_mse:
+                best_ridge_mse = ridge_mse
+                best_ridge_lambda = lam
+
+        # Train final Ridge model with best lambda on the outer train set and evaluate on the outer test set
+        ridge_model = Ridge(alpha=best_ridge_lambda)
+        ridge_model.fit(X_train_outer, y_train_outer)
+        y_test_pred = ridge_model.predict(X_test_outer)
+        outer_results['Ridge'].append(mean_squared_error(y_test_outer, y_test_pred))
+
+        # Baseline Model Evaluation
+        baseline_model = BaselineModel()
+        baseline_model.fit(X_train_outer, y_train_outer)
+        y_test_pred_baseline = baseline_model.predict(X_test_outer)
+        outer_results['Baseline'].append(mean_squared_error(y_test_outer, y_test_pred_baseline))
+
+        # Inner Cross-Validation for ANN
+        best_ann_units = None
+        best_ann_mse = float('inf')
+        
+        for units in hidden_units_list:
+            ann_mse = 0
+            for inner_train_index, inner_val_index in inner_kf.split(X_train_outer):
+                X_train_inner, X_val_inner = X_train_outer[inner_train_index], X_train_outer[inner_val_index]
+                y_train_inner, y_val_inner = y_train_outer[inner_train_index], y_train_outer[inner_val_index]
+
+                mse, _ = train_ann(X_train_inner, y_train_inner, X_val_inner, y_val_inner, hidden_units=units)
+                ann_mse += mse
+            
+            ann_mse /= K2
+            if ann_mse < best_ann_mse:
+                best_ann_mse = ann_mse
+                best_ann_units = units
+
+        # Train final ANN with best hidden units on the outer train set and evaluate on the outer test set
+        _, best_ann_model = train_ann(X_train_outer, y_train_outer, X_test_outer, y_test_outer, hidden_units=best_ann_units)
+        X_test_tensor = torch.tensor(X_test_outer, dtype=torch.float32)
+        with torch.no_grad():
+            y_test_pred_ann = best_ann_model(X_test_tensor).numpy().flatten()
+        outer_results['ANN'].append(mean_squared_error(y_test_outer, y_test_pred_ann))
+
+    # Average MSE across outer folds
+    for model_name, mse_list in outer_results.items():
+        print(f"{model_name} Model - Average MSE across outer folds: {np.mean(mse_list)}")
+
+    return outer_results

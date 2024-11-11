@@ -2,7 +2,7 @@ from sklearn.calibration import LabelEncoder
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
-from Regression2 import cross_validation_model_selection, cross_validation_model_selection2, estimate_generalization_error, plot_training_vs_generalization_error, regularized_regression
+from Regression2 import cross_validation_model_selection, cross_validation_model_selection2, estimate_generalization_error, plot_training_vs_generalization_error, regularized_regression, two_level_cross_validation
 import load_data as ld
 import pandas as pd
 import numpy as np
@@ -17,7 +17,7 @@ X, y = ld.load_data()
 
 # One hot encoding to change sex to converts categorical data into a numerical format
 X_encoded = one_of_K(X)
-
+print(X_encoded)
 # Normalize the data so that mean is 0 and std is 1
 continuous_features = ['Length', 'Diameter', 'Height', 'Whole_weight', 'Shucked_weight', 'Viscera_weight', 'Shell_weight']
 X_normalized = normalize_continuous_features(X_encoded, continuous_features)
@@ -50,3 +50,17 @@ coefficients = ridge_model.coef_
 
 print("Intercept:", intercept)
 print("Coefficients:", coefficients)
+
+
+
+# Convert X_normalized and y to NumPy arrays with consistent numeric types
+X_normalized = X_normalized.to_numpy(dtype=np.float32) if isinstance(X_normalized, pd.DataFrame) else X_normalized.astype(np.float32)
+y = y.to_numpy(dtype=np.float32) if isinstance(y, (pd.DataFrame, pd.Series)) else y.astype(np.float32)
+
+
+# Define hyperparameters for cross-validation
+lambdas = [0.1, 0.5, 1.0, 2.0]  # Example range for Ridge regularization
+hidden_units_list = [1, 5, 10, 20]  # Example range for ANN hidden units
+
+# Run two-level cross-validation
+results = two_level_cross_validation(X_normalized, y, lambdas, hidden_units_list)
