@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from scipy.stats import t
 
 def regularized_regression(X_train, y_train, model_type='ridge', lambdas=None, cv=10):
     """
@@ -451,3 +452,137 @@ def two_level_cross_validation(X, y, lambdas, hidden_units_list, K1=10, K2=10):
         print(f"{model_name} Model - Average MSE across outer folds: {np.mean(mse_list)}")
 
     return outer_results
+
+# Two-Level Cross-Validation Function to generate Table 1 data
+def two_level_cross_validation_table(X, y, lambdas, hidden_units_list, K1=10, K2=10):
+    outer_kf = KFold(n_splits=K1, shuffle=True, random_state=42)
+    results_table = []
+
+    for i, (train_index, test_index) in enumerate(outer_kf.split(X), start=1):
+        X_train_outer, X_test_outer = X[train_index], X[test_index]
+        y_train_outer, y_test_outer = y[train_index], y[test_index]
+
+        # Inner Cross-Validation for Ridge and ANN
+        inner_kf = KFold(n_splits=K2, shuffle=True, random_state=42)
+
+        # Optimal hyperparameters
+        best_ridge_lambda, best_ann_units = None, None
+        best_ridge_mse, best_ann_mse = float('inf'), float('inf')
+
+        # Ridge Regression - Inner Cross Validation
+        for lam in lambdas:
+            ridge_mse = 0
+            for inner_train_index, inner_val_index in inner_kf.split(X_train_outer):
+                X_train_inner, X_val_inner = X[inner_train_index], X[inner_val_index]
+                y_train_inner, y_val_inner = y[inner_train_index], y[inner_val_index]
+
+                ridge_model = Ridge(alpha=lam)
+                ridge_model.fit(X_train_inner, y_train_inner)
+                y_val_pred = ridge_model.predict(X_val_inner)
+                ridge_mse += mean_squared_error(y_val_inner, y_val_pred)
+            
+            ridge_mse /= K2
+            if ridge_mse < best_ridge_mse:
+                best_ridge_mse = ridge_mse
+                best_ridge_lambda = lam
+
+        # ANN - Inner Cross Validation
+        for units in hidden_units_list:
+            ann_mse = 0
+            for inner_train_index, inner_val_index in inner_kf.split(X_train_outer):
+                X_train_inner, X_val_inner = X[inner_train_index], X[inner_val_index]
+                y_train_inner, y_val_inner = y[inner_train_index], y[inner_val_index]
+
+                mse, _ = train_ann(X_train_inner, y_train_inner, X_val_inner, y_val_inner, hidden_units=units)
+                ann_mse += mse
+            
+            ann_mse /= K2
+            if ann_mse < best_ann_mse:
+                best_ann_mse = ann_mse
+                best_ann_units = units
+
+        # Train and Evaluate Ridge Model on Outer Fold
+        ridge_model = Ridge(alpha=best_ridge_lambda)
+        ridge_model.fit(X_train_outer, y_train_outer)
+        y_test_pred_ridge = ridge_model.predict(X_test_outer)
+        E_test_ridge = mean_squared_error(y_test_outer, y_test_pred_ridge)
+
+        # Train and Evaluate ANN Model on Outer Fold
+        _, best_ann_model = train_ann(X_train_outer, y_train_outer, X_test_outer, y_test_outer, hidden_units=best_ann_units)
+        X_test_tensor = torch.tensor(X_test_outer, dtype=torch.float32)
+        with torch.no_grad():
+            y_test_pred_ann = best_ann_model(X_test_tensor).numpy().flatten()
+        E_test_ann = mean_squared_error(y_test_outer, y_test_pred_ann)
+
+        # Evaluate Baseline Model on Outer Fold
+        baseline_model = BaselineModel()
+        baseline_model.fit(X_train_outer, y_train_outer)
+        y_test_pred_baseline = baseline_model.predict(X_test_outer)
+        E_test_baseline = mean_squared_error(y_test_outer, y_test_pred_baseline)
+
+        # Calculate error per observation as required
+        N_test = len(y_test_outer)
+        E_test_ridge /= N_test
+        E_test_ann /= N_test
+        E_test_baseline /= N_test
+
+        # Append results for the current outer fold
+        results_table.append({
+            'Fold': i,
+            'h*_i': best_ann_units,
+            'E_test_i_ANN': E_test_ann,
+            'λ*_i': best_ridge_lambda,
+            'E_test_i_Ridge': E_test_ridge,
+            'E_test_i_Baseline': E_test_baseline
+        })
+
+    # Convert results to a DataFrame for easy display
+    results_df = pd.DataFrame(results_table)
+    return results_df
+
+
+def compare_regression_models(loss_model_A, loss_model_B, confidence_level=0.95):
+    """
+    Compare two regression models by estimating the difference in generalization errors
+    and calculating a confidence interval and p-value.
+
+    Parameters:
+    - loss_model_A: array-like, losses for model A for each observation.
+    - loss_model_B: array-like, losses for model B for each observation.
+    - confidence_level: float, the desired confidence level (e.g., 0.95 for 95%).
+
+    Returns:
+    - z_L: Lower bound of the confidence interval.
+    - z_U: Upper bound of the confidence interval.
+    - p_value: P-value for the null hypothesis that both models have the same performance.
+    - z_mean: Mean of the differences in losses.
+    - z_variance: Variance of the differences in losses.
+    """
+
+    # Compute differences in losses for each observation
+    z_i = loss_model_A - loss_model_B
+    n = len(z_i)
+
+    # Calculate mean and variance of the differences
+    z_mean = np.mean(z_i)
+    z_variance = np.var(z_i, ddof=1) / n  # Sample variance divided by n
+
+    # Calculate the t-distribution critical value for the confidence interval
+    alpha = 1 - confidence_level
+    t_crit = t.ppf(1 - alpha / 2, df=n - 1)
+
+    # Calculate the confidence interval bounds
+    z_L = z_mean - t_crit * np.sqrt(z_variance)
+    z_U = z_mean + t_crit * np.sqrt(z_variance)
+
+    # Calculate the p-value for the null hypothesis (z_mean = 0)
+    t_stat = z_mean / np.sqrt(z_variance)
+    p_value = 2 * (1 - t.cdf(abs(t_stat), df=n - 1))
+
+    return {
+        "z_L": z_L,
+        "z_U": z_U,
+        "p_value": p_value,
+        "z_mean": z_mean,
+        "z_variance": z_variance
+    }

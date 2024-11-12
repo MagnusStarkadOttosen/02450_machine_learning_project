@@ -2,7 +2,7 @@ from sklearn.calibration import LabelEncoder
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
-from Regression2 import cross_validation_model_selection, cross_validation_model_selection2, estimate_generalization_error, plot_training_vs_generalization_error, regularized_regression, two_level_cross_validation
+from Regression2 import compare_regression_models, cross_validation_model_selection, cross_validation_model_selection2, estimate_generalization_error, plot_training_vs_generalization_error, regularized_regression, two_level_cross_validation, two_level_cross_validation_table
 import load_data as ld
 import pandas as pd
 import numpy as np
@@ -63,4 +63,24 @@ lambdas = [0.1, 0.5, 1.0, 2.0]  # Example range for Ridge regularization
 hidden_units_list = [1, 5, 10, 20]  # Example range for ANN hidden units
 
 # Run two-level cross-validation
-results = two_level_cross_validation(X_normalized, y, lambdas, hidden_units_list)
+# results = two_level_cross_validation(X_normalized, y, lambdas, hidden_units_list)
+
+# Run two-level cross-validation and generate table
+results_df = two_level_cross_validation_table(X_normalized, y, lambdas, hidden_units_list)
+
+# Display the table
+print(results_df)
+
+# Extract the test error columns for ANN and Ridge models
+loss_ANN = results_df["E_test_i_ANN"].values
+loss_Ridge = results_df["E_test_i_Ridge"].values
+
+# Use the compare_regression_models function to compute confidence intervals and p-value
+results = compare_regression_models(loss_ANN, loss_Ridge, confidence_level=0.95)
+
+# Print the results
+print("Lower bound of confidence interval:", results["z_L"])
+print("Upper bound of confidence interval:", results["z_U"])
+print("P-value:", results["p_value"])
+print("Mean difference:", results["z_mean"])
+print("Variance of difference:", results["z_variance"])
