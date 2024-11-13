@@ -1,5 +1,7 @@
-# exercise 8.1.1
+#For  regresssion a question 2, but of code is fromt tool box execsises
 import encode_sex as es
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
 
 import importlib_resources
 import numpy as np
@@ -21,10 +23,20 @@ from sklearn import model_selection
 
 from dtuimldmtools import rlr_validate
 import load_data as ld
+def encode_sex(sex):
+    if sex == 'M':
+        return '001'
+    elif sex == 'F':
+        return '010'
+    else:
+        return '100'
 
 # Load the data
 X, y = ld.load_data()
-X = es.encode_sex(X)
+X['Sex_Encoded'] = X['Sex'].apply(encode_sex)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+print(X)
 
 y = np.array(y).squeeze()
 
