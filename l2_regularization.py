@@ -2,6 +2,8 @@
 import encode_sex as es
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+
 
 import importlib_resources
 import numpy as np
@@ -23,17 +25,9 @@ from sklearn import model_selection
 
 from dtuimldmtools import rlr_validate
 import load_data as ld
-def encode_sex(sex):
-    if sex == 'M':
-        return '001'
-    elif sex == 'F':
-        return '010'
-    else:
-        return '100'
-
-# Load the data
+le = LabelEncoder()
 X, y = ld.load_data()
-X['Sex_Encoded'] = X['Sex'].apply(encode_sex)
+X['Sex'] = le.fit_transform(X['Sex'])
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 print(X)
